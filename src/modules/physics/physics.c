@@ -41,6 +41,7 @@ struct World {
   uint32_t tagLookup[MAX_TAGS];
   char* tags[MAX_TAGS];
   JPH_JobSystem* jobSystem;
+  JPH_TempAllocator* tempAllocator;
   mtx_t lock;
 };
 
@@ -418,6 +419,9 @@ World* lovrWorldCreate(WorldInfo* info) {
     .maxBarriers = 1
   });
 
+  // Each World has its own temp allocator, so different Worlds can be updated at the same time
+  world->tempAllocator = JPH_TempAllocator_Create(8 * 1024 * 1024);
+
   JPH_PhysicsSettings settings;
   JPH_PhysicsSystem_GetPhysicsSettings(world->system, &settings);
   settings.allowSleeping = info->allowSleep;
@@ -471,6 +475,7 @@ void lovrWorldDestruct(World* world) {
   mtx_destroy(&world->lock);
 
   JPH_PhysicsSystem_Destroy(world->system);
+  JPH_TempAllocator_Destroy(world->tempAllocator);
   world->system = NULL;
 }
 
@@ -549,7 +554,7 @@ void lovrWorldUpdate(World* world, float dt) {
     quat_fromJolt(collider->lastOrientation, &orientation);
   }
 
-  JPH_PhysicsSystem_Update(world->system, dt, 1, world->jobSystem);
+  JPH_PhysicsSystem_Update2(world->system, dt, 1, world->tempAllocator, world->jobSystem);
 
   world->inverseDelta = 1.f / dt;
   world->interpolation = 0.f;
