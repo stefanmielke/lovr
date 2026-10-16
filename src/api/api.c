@@ -115,12 +115,17 @@ static int luax_release(lua_State* L) {
     return 0;
   }
 
-  // Remove from userdata cache
+  // Remove from userdata cache, unless a newer userdata for the object is already there (a weak
+  // value is cleared before the old userdata's finalizer runs)
   lua_getfield(L, LUA_REGISTRYINDEX, "_lovrobjects");
   lua_pushlightuserdata(L, object->pointer);
-  lua_pushnil(L);
-  lua_rawset(L, -3);
-  lua_pop(L, 1);
+  lua_rawget(L, -2);
+  if (lua_touserdata(L, -1) == object) {
+    lua_pushlightuserdata(L, object->pointer);
+    lua_pushnil(L);
+    lua_rawset(L, -4);
+  }
+  lua_pop(L, 2);
 
   // Release
   lovrRelease(object->pointer, lovrTypeInfo[object->type].destructor);
