@@ -2324,7 +2324,7 @@ Buffer* lovrBufferCreate(const BufferInfo* info, void** data) {
 
 Buffer* lovrBufferCreateView(Buffer* parent, uint32_t offset, uint32_t extent) {
   lovrCheck(offset < parent->info.size, "Buffer view byte range exceeds the size of its parent");
-  lovrCheck(extent < parent->info.size - offset , "Buffer view byte range exceeds the size of its parent");
+  lovrCheck(extent <= parent->info.size - offset, "Buffer view byte range exceeds the size of its parent");
   lovrCheck(offset % parent->info.format->stride == 0, "Buffer view offset must be a multiple of its stride");
   lovrCheck(extent % parent->info.format->stride == 0, "Buffer view extent must be a multiple of its stride");
 
