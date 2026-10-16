@@ -42,6 +42,7 @@ struct World {
   char* tags[MAX_TAGS];
   JPH_TempAllocator* allocator;
   JPH_JobSystem* jobSystem;
+  atomic_uint pendingJobs;
   mtx_t lock;
 };
 
@@ -293,12 +294,36 @@ static void onContactRemoved(void* userdata, const JPH_SubShapeIDPair* pair) {
   }
 }
 
+#ifndef LOVR_DISABLE_THREAD
+typedef struct {
+  World* world;
+  JPH_JobFunction* function;
+  void* arg;
+} WorldJob;
+
+// Jolt also runs jobs on the thread waiting for them, so a job can still be in lovr's job queue
+// after the update finishes.  Track them so the job system isn't destroyed while they're queued.
+static void runJob(void* arg) {
+  WorldJob* job = arg;
+  World* world = job->world;
+  job->function(job->arg);
+  lovrFree(job);
+  atomic_fetch_sub(&world->pendingJobs, 1);
+}
+#endif
+
 static void queueJob(void* context, JPH_JobFunction* function, void* arg) {
 #ifdef LOVR_DISABLE_THREAD
   function(arg);
 #else
-  if (!job_start(function, arg)) {
-    function(arg);
+  World* world = context;
+  WorldJob* job = lovrMalloc(sizeof(WorldJob));
+  job->world = world;
+  job->function = function;
+  job->arg = arg;
+  atomic_fetch_add(&world->pendingJobs, 1);
+  if (!job_start(runJob, job)) {
+    runJob(job);
   }
 #endif
 }
@@ -473,6 +498,13 @@ void lovrWorldDestruct(World* world) {
   }
   mtx_destroy(&world->lock);
 
+#ifndef LOVR_DISABLE_THREAD
+  while (atomic_load(&world->pendingJobs) > 0) {
+    job_spin();
+  }
+#endif
+
+  JPH_JobSystem_Destroy(world->jobSystem);
   JPH_TempAllocator_Destroy(world->allocator);
   JPH_PhysicsSystem_Destroy(world->system);
   world->system = NULL;
