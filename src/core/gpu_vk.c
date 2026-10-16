@@ -4173,9 +4173,10 @@ static void condemn(void* handle, VkObjectType type) {
   if (!handle) return;
 
   gpu_morgue* morgue = &state.morgue;
-  gpu_victim* victim = morgue->pool;
 
   mtx_lock(&morgue->lock);
+
+  gpu_victim* victim = morgue->pool;
 
   if (victim) {
     morgue->pool = victim->next;
