@@ -178,6 +178,7 @@ typedef struct gpu_victim {
   VkObjectType type;
   uint32_t tick;
   void* handle;
+  VkDeviceSize offset;
 } gpu_victim;
 
 typedef struct {
@@ -301,7 +302,9 @@ enum { LINEAR, SRGB };
 
 static gpu_memory* allocate(gpu_memory_type type, VkMemoryRequirements info, VkDeviceSize* offset);
 static void release(gpu_memory* memory, VkDeviceSize offset);
+static void reclaim(gpu_memory* memory, VkDeviceSize offset);
 static void condemn(void* handle, VkObjectType type);
+static void bury(void* handle, VkObjectType type, VkDeviceSize offset);
 static void expunge(uint64_t tick);
 static uint64_t getFinishedTick(void);
 static bool hasLayer(VkLayerProperties* layers, uint32_t count, const char* layer);
@@ -4118,11 +4121,13 @@ static gpu_memory* allocate(gpu_memory_type type, VkMemoryRequirements info, VkD
   return NULL;
 }
 
+// The memory isn't reused right away, since commands that haven't run yet may still write to it
+// (e.g. a clear of a Buffer that was just destroyed).  expunge reclaims it once they're done.
 static void release(gpu_memory* memory, VkDeviceSize offset) {
-  if (!memory) {
-    return;
-  }
+  if (memory) bury(memory, VK_OBJECT_TYPE_DEVICE_MEMORY, offset);
+}
 
+static void reclaim(gpu_memory* memory, VkDeviceSize offset) {
   gpu_allocator* allocator = &state.allocators[state.allocatorLookup[memory->type]];
 
   mtx_lock(&state.allocatorLock);
@@ -4134,7 +4139,7 @@ static void release(gpu_memory* memory, VkDeviceSize offset) {
       region->allocated = false;
       region->pageCount = allocator->pageCount;
     } else {
-      condemn(memory->handle, VK_OBJECT_TYPE_DEVICE_MEMORY);
+      vkFreeMemory(state.device, memory->handle, NULL);
       memory->handle = NULL;
     }
   } else if (allocator->block == memory) {
@@ -4170,8 +4175,10 @@ static void release(gpu_memory* memory, VkDeviceSize offset) {
 }
 
 static void condemn(void* handle, VkObjectType type) {
-  if (!handle) return;
+  if (handle) bury(handle, type, 0);
+}
 
+static void bury(void* handle, VkObjectType type, VkDeviceSize offset) {
   gpu_morgue* morgue = &state.morgue;
   gpu_victim* victim = morgue->pool;
 
@@ -4187,6 +4194,7 @@ static void condemn(void* handle, VkObjectType type) {
   victim->type = type;
   victim->tick = state.tick + 1;
   victim->handle = handle;
+  victim->offset = offset;
 
   if (morgue->tail) {
     morgue->tail->next = victim;
@@ -4220,7 +4228,7 @@ static void expunge(uint64_t tick) {
       case VK_OBJECT_TYPE_RENDER_PASS: vkDestroyRenderPass(state.device, victim->handle, NULL); break;
       case VK_OBJECT_TYPE_FRAMEBUFFER: vkDestroyFramebuffer(state.device, victim->handle, NULL); break;
       case VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR: vkDestroyAccelerationStructureKHR(state.device, victim->handle, NULL); break;
-      case VK_OBJECT_TYPE_DEVICE_MEMORY: vkFreeMemory(state.device, victim->handle, NULL); break;
+      case VK_OBJECT_TYPE_DEVICE_MEMORY: reclaim(victim->handle, victim->offset); break;
       default: LOG("Trying to destroy invalid Vulkan object type!"); break;
     }
 
