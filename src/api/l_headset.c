@@ -140,6 +140,7 @@ static int l_lovrHeadsetGetFeatures(lua_State* L) {
   lua_pushboolean(L, features.refreshRate), lua_setfield(L, -2, "refreshRate");
   lua_pushboolean(L, features.depthSubmission), lua_setfield(L, -2, "depthSubmission");
   lua_pushboolean(L, features.eyeTracking), lua_setfield(L, -2, "eyeTracking");
+  lua_pushboolean(L, features.foveation), lua_setfield(L, -2, "foveation");
   lua_pushboolean(L, features.handTracking), lua_setfield(L, -2, "handTracking");
   lua_pushboolean(L, features.handTrackingElbow), lua_setfield(L, -2, "handTrackingElbow");
   lua_pushboolean(L, features.bodyTracking), lua_setfield(L, -2, "bodyTracking");
@@ -285,7 +286,7 @@ static int l_lovrHeadsetSetFoveation(lua_State* L) {
     return 1;
   } else {
     FoveationLevel level = luax_checkenum(L, 1, FoveationLevel, NULL);
-    bool dynamic = lua_isnoneornil(L, -1) ? true : lua_toboolean(L, 2);
+    bool dynamic = lua_isnoneornil(L, 2) ? true : lua_toboolean(L, 2);
     bool success = lovrHeadsetSetFoveation(level, dynamic);
     lua_pushboolean(L, success);
     return 1;
@@ -1095,6 +1096,7 @@ int luaopen_lovr_headset(lua_State* L) {
     .mask = true,
     .stencil = false,
     .antialias = true,
+    .compressedFoveation = false,
     .submitDepth = true,
     .overlay = false,
     .overlayOrder = 0,
@@ -1131,6 +1133,10 @@ int luaopen_lovr_headset(lua_State* L) {
 
       lua_getfield(L, -1, "antialias");
       config.antialias = lua_isnil(L, -1) ? true : lua_toboolean(L, -1);
+      lua_pop(L, 1);
+
+      lua_getfield(L, -1, "compressedfoveation");
+      config.compressedFoveation = lua_toboolean(L, -1);
       lua_pop(L, 1);
 
       lua_getfield(L, -1, "submitdepth");

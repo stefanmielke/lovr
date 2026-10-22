@@ -975,6 +975,7 @@ void lovrGraphicsGetFeatures(GraphicsFeatures* features) {
   features->depthClamp = state.features.depthClamp;
   features->depthResolve = state.features.depthResolve;
   features->raytracing = state.features.rayQuery;
+  features->foveation = state.features.foveation;
   features->indirectDrawFirstInstance = state.features.indirectDrawFirstInstance;
   features->packedBuffers = state.features.packedBuffers;
   features->float64 = state.features.float64;

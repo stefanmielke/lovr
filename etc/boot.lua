@@ -47,6 +47,7 @@ local conf = {
     stencil = false,
     antialias = true,
     supersample = false,
+    compressedfoveation = false,
     submitdepth = true,
     overlay = false,
     controllerskeleton = 'controller',

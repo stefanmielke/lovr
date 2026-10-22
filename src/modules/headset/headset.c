@@ -369,6 +369,7 @@ static struct {
     bool uuid;
     bool visibilityMask;
     bool viveTrackers;
+    bool vulkanSwapchainInfo;
   } extensions;
 } state;
 
@@ -528,6 +529,7 @@ bool lovrHeadsetConnect(void) {
     { "XR_META_automatic_layer_filter", &state.extensions.layerAutoFilter, true },
     { "XR_META_hand_tracking_microgestures", &state.extensions.microgestures, true },
     { "XR_META_passthrough_preferences", &state.extensions.passthroughPreferences, true },
+    { "XR_META_vulkan_swapchain_create_info", &state.extensions.vulkanSwapchainInfo, true },
     { "XR_ML_ml2_controller_interaction", &state.extensions.ml2Controller, true },
     { "XR_MND_headless", &state.extensions.headless, true },
     { "XR_ULTRALEAP_hand_tracking_forearm", &state.extensions.handTrackingElbow, true },
@@ -1553,6 +1555,7 @@ void lovrHeadsetGetFeatures(HeadsetFeatures* features) {
   features->refreshRate = state.extensions.refreshRate;
   features->depthSubmission = state.extensions.depth;
   features->eyeTracking = state.extensions.gaze;
+  features->foveation = state.extensions.foveation;
   features->handTracking = state.extensions.handTracking;
   features->handTrackingElbow = state.extensions.handTrackingElbow;
   features->bodyTracking = state.extensions.bodyTracking;
@@ -1732,12 +1735,18 @@ bool lovrHeadsetStart(void) {
     }
 
     lovrAssertGoto(stop, supportsColor, "This VR runtime does not support sRGB rgba8 textures");
+
+    GraphicsFeatures features;
+    lovrGraphicsGetFeatures(&features);
+
+    if (!features.foveation) {
+      state.extensions.foveation = false;
+    }
+
     if (!lovrSwapchainInit(&state.swapchains[SWAPCHAIN_COLOR], state.width, state.height, VIEW | FOVEATED)) {
       goto stop;
     }
 
-    GraphicsFeatures features;
-    lovrGraphicsGetFeatures(&features);
     if (state.extensions.depth && supportsDepth && features.depthResolve) {
       if (!lovrSwapchainInit(&state.swapchains[SWAPCHAIN_DEPTH], state.width, state.height, VIEW | DEPTH)) {
         goto stop;
@@ -3994,6 +4003,7 @@ static bool lovrSwapchainInit(Swapchain* swapchain, uint32_t width, uint32_t hei
   bool cube = flags & CUBE;
   bool immutable = flags & STATIC;
   bool foveated = flags & FOVEATED && state.extensions.foveation;
+  bool subsampled = foveated && state.extensions.vulkanSwapchainInfo && state.config.compressedFoveation;
 
   XrSwapchainCreateInfo info = {
     .type = XR_TYPE_SWAPCHAIN_CREATE_INFO,
@@ -4017,6 +4027,16 @@ static bool lovrSwapchainInit(Swapchain* swapchain, uint32_t width, uint32_t hei
     info.next = &foveation;
   }
 
+  XrVulkanSwapchainCreateInfoMETA vulkanCreateInfo = {
+    .type = XR_TYPE_VULKAN_SWAPCHAIN_CREATE_INFO_META,
+    .additionalCreateFlags = VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT
+  };
+
+  if (subsampled) {
+    vulkanCreateInfo.next = info.next;
+    info.next = &vulkanCreateInfo;
+  }
+
   if (depth) {
     info.usageFlags = XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     switch (state.depthFormat) {
@@ -4028,8 +4048,10 @@ static bool lovrSwapchainInit(Swapchain* swapchain, uint32_t width, uint32_t hei
     }
   } else {
     info.usageFlags |= XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-    info.usageFlags |= XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
-    info.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+    if (!subsampled) {
+      info.usageFlags |= XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+      info.usageFlags |= XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+    }
     info.format = VK_FORMAT_R8G8B8A8_SRGB;
   }
 
@@ -4061,7 +4083,7 @@ static bool lovrSwapchainInit(Swapchain* swapchain, uint32_t width, uint32_t hei
       .width = width,
       .height = height,
       .layers = view ? state.viewCount : ((cube ? 6 : 1) << stereo),
-      .usage = TEXTURE_RENDER | TEXTURE_TRANSFER | (depth ? 0 : TEXTURE_SAMPLE),
+      .usage = TEXTURE_RENDER | (subsampled ? 0 : TEXTURE_TRANSFER | (depth ? 0 : TEXTURE_SAMPLE)),
       .handle = (uintptr_t) images[i].image,
       .label = "OpenXR Swapchain",
       .xr = true

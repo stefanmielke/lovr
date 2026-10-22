@@ -28,6 +28,7 @@ typedef struct {
   bool mask;
   bool stencil;
   bool antialias;
+  bool compressedFoveation;
   bool submitDepth;
   bool overlay;
   uint32_t overlayOrder;
@@ -44,6 +45,7 @@ typedef struct {
   bool refreshRate;
   bool depthSubmission;
   bool eyeTracking;
+  bool foveation;
   bool handTracking;
   bool handTrackingElbow;
   bool bodyTracking;
