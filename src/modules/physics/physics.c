@@ -630,9 +630,8 @@ static float shapecastCallback(void* arg, const JPH_ShapeCastResult* result) {
   hit.collider = (Collider*) (uintptr_t) JPH_BodyInterface_GetUserData(ctx->world->bodyInterfaceNoLock, result->bodyID2);
   hit.shape = subshapeToShape(hit.collider, result->subShapeID2, &hit.triangle);
   vec3_fromJolt(hit.position, &result->contactPointOn2);
-  JPH_Vec3 normal;
-  JPH_Body_GetWorldSpaceSurfaceNormal(hit.collider->body, result->subShapeID2, &result->contactPointOn2, &normal);
-  vec3_fromJolt(hit.normal, &normal);
+  vec3_fromJolt(hit.normal, &result->penetrationAxis);
+  vec3_scale(vec3_normalize(hit.normal), -1.f);
   hit.depth = result->fraction;
   return ctx->callback(ctx->userdata, &hit);
 }
